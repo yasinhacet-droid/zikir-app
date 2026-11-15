@@ -1,0 +1,59 @@
+name: Web-App fürs iPhone (GitHub Pages)
+
+# Nur manuell starten: Actions -> "Web-App fürs iPhone" -> Run workflow
+# Voraussetzung: Settings -> Pages -> Source: "GitHub Actions"
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Web-Ordner erzeugen
+        run: flutter create . --project-name zikir_app --org de.zikir --platforms android,ios,web
+
+      - name: Name und Farben der Web-App setzen
+        run: |
+          sed -i 's/"zikir_app"/"Zikir"/g' web/manifest.json
+          sed -i 's/#0175C2/#0B3B2E/g' web/manifest.json
+          sed -i 's/<title>zikir_app<\/title>/<title>Zikir<\/title>/' web/index.html
+          sed -i 's/content="zikir_app"/content="Zikir"/g' web/index.html
+
+      - run: flutter pub get
+
+      - name: Icons erzeugen
+        run: dart run flutter_launcher_icons
+        continue-on-error: true
+
+      - name: Web-App bauen
+        run: flutter build web --release --base-href "/${{ github.event.repository.name }}/"
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/web
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

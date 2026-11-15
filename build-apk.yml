@@ -1,0 +1,69 @@
+name: Android-APK bauen
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Code holen
+        uses: actions/checkout@v4
+
+      - name: Java einrichten
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Flutter einrichten
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Plattform-Ordner (android/ios/web) erzeugen
+        run: flutter create . --project-name zikir_app --org de.zikir --platforms android,ios,web
+
+      - name: App-Name "Zikir" setzen
+        run: sed -i 's/android:label="zikir_app"/android:label="Zikir"/' android/app/src/main/AndroidManifest.xml
+
+      - name: Festen Signatur-Schlüssel verwenden (Updates ohne Datenverlust)
+        run: |
+          mkdir -p ~/.android
+          cp ci/debug.keystore ~/.android/debug.keystore
+
+      - name: Abhängigkeiten laden
+        run: flutter pub get
+
+      - name: App-Icon erzeugen
+        run: dart run flutter_launcher_icons
+        continue-on-error: true
+
+      - name: Tests
+        run: flutter test
+        continue-on-error: true
+
+      - name: APK bauen
+        run: flutter build apk --release
+
+      - name: APK umbenennen
+        run: cp build/app/outputs/flutter-apk/app-release.apk zikir-app-v1.0.${{ github.run_number }}.apk
+
+      - name: APK als Download ablegen (Actions-Artefakt)
+        uses: actions/upload-artifact@v4
+        with:
+          name: zikir-app-apk
+          path: zikir-app-v*.apk
+
+      - name: APK als Release veröffentlichen (direkter Download fürs Handy)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: Zikir v1.0.${{ github.run_number }}
+          files: zikir-app-v*.apk
