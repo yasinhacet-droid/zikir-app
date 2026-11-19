@@ -43,7 +43,9 @@ jobs:
         run: |
           mkdir -p ~/.android
           if [ -n "$UPLOAD_KEYSTORE_BASE64" ]; then
-            echo "$UPLOAD_KEYSTORE_BASE64" | base64 -d > ~/.android/debug.keystore
+            echo "$UPLOAD_KEYSTORE_BASE64" | tr -d ' \r\n\t' | base64 -d > ~/.android/debug.keystore
+            echo "Prüfsumme Schlüssel: $(sha256sum ~/.android/debug.keystore | cut -c1-16)"
+            keytool -list -keystore ~/.android/debug.keystore -storepass android | grep -i androiddebugkey
             echo "SIGNED=play" >> "$GITHUB_ENV"
             echo "Upload-Schlüssel aus GitHub-Secret verwendet."
           else
