@@ -41,16 +41,17 @@ jobs:
 
       - name: Signatur-Schlüssel bereitstellen
         run: |
-          mkdir -p ~/.android
           if [ -n "$UPLOAD_KEYSTORE_PASSWORD" ]; then
+            KS="$RUNNER_TEMP/upload.jks"
             openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 \
-              -in ci/upload-keystore.enc -out ~/.android/debug.keystore \
+              -in ci/upload-keystore.enc -out "$KS" \
               -pass env:UPLOAD_KEYSTORE_PASSWORD
-            echo "Prüfsumme Schlüssel: $(sha256sum ~/.android/debug.keystore | cut -c1-16) (erwartet: afef26d56245f721)"
-            keytool -list -keystore ~/.android/debug.keystore -storepass android | grep -i androiddebugkey
+            echo "Prüfsumme Schlüssel: $(sha256sum "$KS" | cut -c1-16) (erwartet: afef26d56245f721)"
+            keytool -list -keystore "$KS" -storepass android | grep -i androiddebugkey
+            UPLOAD_KEYSTORE_FILE="$KS" python3 ci/patch_signing.py
             echo "SIGNED=play" >> "$GITHUB_ENV"
-            echo "Upload-Schlüssel entschlüsselt – APK + AAB werden gebaut."
           else
+            mkdir -p ~/.android
             cp ci/debug.keystore ~/.android/debug.keystore
             echo "SIGNED=local" >> "$GITHUB_ENV"
             echo "Kein Secret UPLOAD_KEYSTORE_PASSWORD gefunden – lokaler Schlüssel, nur APK."
@@ -72,6 +73,16 @@ jobs:
       - name: App-Bundle (AAB) für Play Store bauen
         if: env.SIGNED == 'play'
         run: flutter build appbundle --release --build-name "$VERSION_NAME" --build-number "$VERSION_CODE"
+
+      - name: Signatur prüfen (kein Debug-Schlüssel im Play-Bundle)
+        if: env.SIGNED == 'play'
+        run: |
+          OWNER=$(keytool -printcert -jarfile build/app/outputs/bundle/release/app-release.aab | grep -m1 "Owner")
+          echo "Signiert von: $OWNER"
+          if echo "$OWNER" | grep -q "Android Debug"; then
+            echo "::error::AAB ist mit Debug-Schlüssel signiert – Play Store lehnt das ab."
+            exit 1
+          fi
 
       - name: Dateien umbenennen
         run: |
