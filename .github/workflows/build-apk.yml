@@ -12,7 +12,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      UPLOAD_KEYSTORE_BASE64: ${{ secrets.UPLOAD_KEYSTORE_BASE64 }}
+      UPLOAD_KEYSTORE_PASSWORD: ${{ secrets.UPLOAD_KEYSTORE_PASSWORD }}
       VERSION_NAME: 1.0.${{ github.run_number }}
       VERSION_CODE: ${{ github.run_number }}
     steps:
@@ -42,16 +42,18 @@ jobs:
       - name: Signatur-Schlüssel bereitstellen
         run: |
           mkdir -p ~/.android
-          if [ -n "$UPLOAD_KEYSTORE_BASE64" ]; then
-            echo "$UPLOAD_KEYSTORE_BASE64" | tr -d ' \r\n\t' | base64 -d > ~/.android/debug.keystore
-            echo "Prüfsumme Schlüssel: $(sha256sum ~/.android/debug.keystore | cut -c1-16)"
+          if [ -n "$UPLOAD_KEYSTORE_PASSWORD" ]; then
+            openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 \
+              -in ci/upload-keystore.enc -out ~/.android/debug.keystore \
+              -pass env:UPLOAD_KEYSTORE_PASSWORD
+            echo "Prüfsumme Schlüssel: $(sha256sum ~/.android/debug.keystore | cut -c1-16) (erwartet: afef26d56245f721)"
             keytool -list -keystore ~/.android/debug.keystore -storepass android | grep -i androiddebugkey
             echo "SIGNED=play" >> "$GITHUB_ENV"
-            echo "Upload-Schlüssel aus GitHub-Secret verwendet."
+            echo "Upload-Schlüssel entschlüsselt – APK + AAB werden gebaut."
           else
             cp ci/debug.keystore ~/.android/debug.keystore
             echo "SIGNED=local" >> "$GITHUB_ENV"
-            echo "Kein Secret UPLOAD_KEYSTORE_BASE64 gefunden – lokaler Schlüssel, nur APK."
+            echo "Kein Secret UPLOAD_KEYSTORE_PASSWORD gefunden – lokaler Schlüssel, nur APK."
           fi
 
       - name: Abhängigkeiten laden
